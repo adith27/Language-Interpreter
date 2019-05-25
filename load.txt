@@ -1,0 +1,10 @@
+#r "bin/FsLexYacc.Runtime.dll";;
+   #load "Environ.fs";;
+   #load "Absyn.fs";;
+   #load "PlcParserAux.fs";;
+   #load "PlcParser.fs";;
+   #load "PlcLexer.fs";;
+   #load "PlcInterp.fs";;
+   #load "PlcChecker.fs";;
+   #load "Parse.fs";;
+   #load "Plc.fs";;

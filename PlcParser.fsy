@@ -1,0 +1,182 @@
+// No changes needed here
+
+%{
+ open Absyn
+ open ParAux
+%}
+
+%token <int> CSTINT
+%token <string> NAME
+%token <bool> CSTBOOL
+
+/*      Nil  Bool  Int   ->     */
+%token  NIL  BOOL  INT  ARROW
+
+/*      =>      fn  end  */
+%token  DARROW  FN  END
+
+/*      var  fun  rec  */
+%token  VAR  FUN  REC
+
+/*      if  then  else  */
+%token  IF  THEN  ELSE
+
+/*      match  with  |     _          */
+%token  MATCH  WITH  PIPE  UNDERSCORE
+
+/*      !    &&   */
+%token  NOT  AND
+
+/*      ::    hd    tl    ise  */
+%token  CONS  HEAD  TAIL  ISE
+
+/*      print  */
+%token  PRINT
+
+/*      +     -      *      /     */
+%token  PLUS  MINUS  TIMES  DIV
+
+/*      =   !=   <   <=   */
+%token  EQ  NEQ  LT  LTE
+
+/*      (     )     {       }       [       ]       */
+%token  LPAR  RPAR  LBRACE  RBRACE  LBRACK  RBRACK
+
+/*      ,      :      ;      */
+%token  COMMA  COLON  SEMIC
+
+%token EOF
+
+
+%right SEMIC ARROW
+%nonassoc IF MATCH
+%left ELSE
+%left AND
+%left EQ NEQ
+%left LT LTE
+%right CONS
+%left PLUS MINUS
+%left TIMES DIV
+%nonassoc NOT HEAD TAIL ISE PRINT NAME
+%left LBRACK
+
+%start Main
+%type <Absyn.expr> Main Expr AtExpr Const
+%type <Absyn.expr> AppExpr
+
+%%
+
+Main:
+  Prog EOF  { $1 }
+;
+
+Prog:
+  Expr  { $1 }
+  | Decl SEMIC  Prog 
+    { match $1 with 
+      | w, [x], [], []  -> Let (w, x, $3)
+      | w, [z], [x], [y] -> makeFun w x y z $3 }
+;
+
+Decl:
+  VAR NAME EQ Expr                       { $2, [$4], [], []}
+  | FUN NAME Args EQ Expr                { $2, [makeAnon $3 $5], [], [] }
+  | FUN REC NAME Args COLON Type EQ Expr { $3, [$8], [$4], [$6]}
+;
+
+
+Args:
+    LPAR RPAR           { []   }
+  | LPAR Params RPAR    { $2   }           /* new rule */
+;
+
+Params:
+    TypedVar                 { $1 :: [] }  /* new rule */
+  | TypedVar COMMA Params    { $1 :: $3 }  /* new rule */
+;
+
+TypedVar:
+  Type NAME  { ($1, $2) }      /* new rule */
+;
+
+Type:
+    AtType              { $1            }
+/*| ListType            { ListT $1 } */
+  | LPAR Types RPAR     { ListT ($2)    }
+  | LBRACK Type RBRACK  { SeqT ($2)     } /*Sequence support*/
+  | Type ARROW Type     { FunT ($1, $3) } /*Support for fun unlike hw6*/
+;
+
+AtType:
+  | NIL             { ListT [] }
+  | INT             { IntT     }
+  | BOOL            { BoolT    }
+  | LPAR Type RPAR  { $2       }
+;
+
+Types :
+    Type COMMA Type  { [$1; $3] }
+  | Type COMMA Types { $1 :: $3 }     
+;
+
+Expr:
+    AtExpr                       { $1                   }                  
+  | AppExpr                      { $1                   }                  
+  | IF Expr THEN Expr ELSE Expr  { If ($2, $4, $6)      }                  
+  | MATCH Expr WITH MatchExpr    { Match ($2, $4)       }                  
+  | NOT Expr                     { Prim1 ("!", $2)      }                  
+  | MINUS Expr                   { Prim1 ("-", $2)      }
+  | HEAD Expr                    { Prim1 ("hd", $2)     }
+  | TAIL Expr                    { Prim1 ("tl", $2)     }
+  | ISE Expr                     { Prim1 ("ise", $2)    }
+  | PRINT Expr                   { Prim1 ("print", $2)  }
+  | Expr PLUS Expr               { Prim2 ("+", $1, $3)  }                  
+  | Expr MINUS Expr              { Prim2 ("-", $1, $3)  }
+  | Expr TIMES Expr              { Prim2 ("*", $1, $3)  }
+  | Expr DIV Expr                { Prim2 ("/", $1, $3)  }
+  | Expr EQ Expr                 { Prim2 ("=", $1, $3)  }
+  | Expr NEQ Expr                { Prim2 ("!=", $1, $3) }
+  | Expr LT Expr                 { Prim2 ("<", $1, $3)  }
+  | Expr LTE Expr                { Prim2 ("<=", $1, $3) }
+  | Expr AND Expr                { Prim2 ("&&", $1, $3) }
+  | Expr CONS Expr               { Prim2 ("::", $1, $3) }
+  | Expr SEMIC Expr              { Prim2 (";", $1, $3)  }
+  | Expr LBRACK CSTINT RBRACK    { Item ($3, $1)        }
+;
+
+AtExpr:
+      Const                  { $1      }
+  | NAME                     { Var $1  }
+  | LBRACE Prog RBRACE       { $2      }
+  | LPAR Expr RPAR           { $2      }
+ /* | LPAR RPAR          { List [] } */
+  | LPAR Comps RPAR          { List $2 }
+  | FN Args DARROW Expr END  { makeAnon $2 $4 } /* Using makeannon from PlcParserAux */
+;
+
+Comps:
+    Expr COMMA Expr   { [$1; $3] }
+  | Expr COMMA Comps  { $1 :: $3 }
+;
+
+AppExpr:
+    AtExpr AtExpr  { Call ($1, $2) }
+  | AppExpr AtExpr { Call ($1, $2) }
+;
+
+Const:
+    CSTINT    { ConI ($1) }
+  | CSTBOOL   { ConB ($1) }
+  | LPAR RPAR { List []   }
+  | LPAR Type LBRACK RBRACK RPAR { ESeq $2 }
+;
+
+MatchExpr:
+    END { [] }
+  | PIPE CondExpr ARROW Expr MatchExpr { List.append [($2, $4)] $5 }
+;
+
+CondExpr:
+  Expr         { Some ($1) }
+  | UNDERSCORE {      None }
+;
